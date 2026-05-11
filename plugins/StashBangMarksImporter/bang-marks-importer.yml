@@ -1,0 +1,21 @@
+name: Bang Marks Importer
+description: Imports Bang.com video page chapters as Stash scene markers using existing tags only.
+version: 1.0.0
+url: https://github.com/<your-user>/BangMarksImporter
+
+ui:
+  javascript:
+    - bang-marks-importer.js
+  css:
+    - bang-marks-importer.css
+
+exec:
+  - python3
+  - "{pluginDir}/bang_marks_importer.py"
+
+interface: raw
+errLog: info
+
+tasks:
+  - name: Import Bang.com marks
+    description: Imports WEBVTT chapters from Bang.com video page URLs as Stash scene markers using nearest existing tags.

@@ -1,0 +1,14 @@
+.bmi-import-bang-marks-btn svg {
+  width: 1em;
+  height: 1em;
+}
+
+.bmi-import-bang-marks-btn.bci-loading,
+.bmi-bulk-import-bang-marks-btn.bci-loading {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+.bmi-bulk-import-bang-marks-btn {
+  white-space: nowrap;
+}
