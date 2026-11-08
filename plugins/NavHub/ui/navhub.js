@@ -15,9 +15,12 @@
   const registry = new Map();
   const managed = new Set();
   const utilities = new Set();
+  const refractMirrors = new Set();
   let host, trigger, pins, panel, backdrop, content, heading, closeButton, errorBox;
+  let refractTrigger;
   let entries = [], open = false, settings = false, scheduled = false, signature = '';
   const media = window.matchMedia('(max-width: 1199.98px)');
+  const refractMobile = window.matchMedia('(max-width: 900px)');
   function el(tag, className, text) {
     const node = document.createElement(tag);
     if (className) node.className = className;
@@ -34,8 +37,72 @@
     try { localStorage.setItem(STORAGE, JSON.stringify(preferences)); } catch (_) { /* session-only settings still work */ }
     sync(true);
   }
-  function hide(node) { node.classList.add('nh-managed'); managed.add(node); }
-  function restore() { managed.forEach(node => node.classList.remove('nh-managed')); managed.clear(); utilities.forEach(node => node.classList.remove('nh-mobile-utility')); utilities.clear(); }
+  function syncHidden(current, next, className) {
+    for (const node of current) {
+      if (next.has(node)) continue;
+      node.classList.remove(className);
+      current.delete(node);
+    }
+    for (const node of next) {
+      if (!node.classList.contains(className)) node.classList.add(className);
+      current.add(node);
+    }
+  }
+  function usesRefractDock() {
+    return refractMobile.matches && document.body.classList.contains('stash-liquid-glass');
+  }
+  function activeTrigger() {
+    const button = usesRefractDock() ? refractTrigger : trigger;
+    return button?.isConnected ? button : null;
+  }
+  function menuTrigger(label, className, onClick) {
+    const node = button(label, className, onClick);
+    node.setAttribute('aria-haspopup', 'dialog');
+    node.setAttribute('aria-controls', 'nh-panel');
+    node.setAttribute('aria-expanded', String(open));
+    return node;
+  }
+  function mountRefractTrigger(burger) {
+    if (!burger) { refractTrigger?.remove(); return; }
+    if (!refractTrigger) {
+      refractTrigger = menuTrigger('▦', 'nh-trigger nh-refract-trigger refract-dock-item', event => {
+        event.stopPropagation();
+        setOpen(!open);
+      });
+      refractTrigger.setAttribute('aria-label', 'Plugins');
+      refractTrigger.title = 'Plugins';
+    }
+    if (burger.previousElementSibling !== refractTrigger) burger.before(refractTrigger);
+  }
+  function findRefractMirrors(nav, dock, sources) {
+    const mirrors = new Set();
+    if (!dock || !sources.size) return mirrors;
+    const managedLinks = new Set([...sources].map(source => source.closest('a[href]')));
+    const drawerLinks = new Set();
+    const uniqueLinks = new Map();
+    for (const link of nav.querySelectorAll('a[href]')) {
+      const href = link.getAttribute('href');
+      uniqueLinks.set(href, uniqueLinks.has(href) ? null : link);
+    }
+    // Only plugin route tiles can establish a match for a route in the dock.
+    for (const tile of document.querySelectorAll('.refract-mobile-drawer .refract-drawer-tile[data-plugin-tile][data-href]')) {
+      const href = tile.getAttribute('data-href');
+      const link = uniqueLinks.get(href);
+      if (!link || !managedLinks.has(link)) continue;
+      mirrors.add(tile);
+      drawerLinks.add(href);
+    }
+    for (const tile of dock.querySelectorAll('.refract-dock-item[data-href]')) {
+      if (drawerLinks.has(tile.getAttribute('data-href'))) mirrors.add(tile);
+    }
+    for (const tile of document.querySelectorAll('.refract-mobile-drawer .refract-drawer-tile[data-action-selector], .refract-mobile-dock .refract-dock-item[data-action-selector]')) {
+      try {
+        // Refract resolves these selectors against the document on click.
+        if (sources.has(document.querySelector(tile.dataset.actionSelector))) mirrors.add(tile);
+      } catch (_) { /* Ignore selectors the theme cannot resolve. */ }
+    }
+    return mirrors;
+  }
   function sourceFor(def, nav) {
     return def.selector ? nav.querySelector(def.selector) : null;
   }
@@ -81,16 +148,22 @@
     return node;
   }
   function position() {
-    if (!open || media.matches || !trigger?.isConnected) return;
-    const rect = trigger.getBoundingClientRect();
+    const opener = activeTrigger();
+    if (!open || media.matches || !opener) return;
+    const rect = opener.getBoundingClientRect();
     panel.style.top = `${Math.min(rect.bottom + 6, Math.max(8, innerHeight - 180))}px`;
     panel.style.right = `${Math.max(8, innerWidth - rect.right)}px`;
   }
   function setOpen(value, returnFocus = false) {
+    const opener = activeTrigger();
+    if (value && usesRefractDock() && document.body.classList.contains('refract-burger-open')) {
+      opener?.parentElement.querySelector(':scope > .refract-dock-burger')?.click();
+    }
     open = value; panel.hidden = !value; backdrop.hidden = !value;
     trigger?.setAttribute('aria-expanded', String(value));
+    refractTrigger?.setAttribute('aria-expanded', String(value));
     if (value) { settings = false; render(); position(); closeButton.focus(); }
-    else if (returnFocus) trigger?.focus();
+    else if (returnFocus) opener?.focus();
   }
   function move(entry, direction) {
     const ordered = entries.map(e => e.id), from = ordered.indexOf(entry.id), to = from + direction;
@@ -166,27 +239,39 @@
     scheduled = false;
     const nav = document.querySelector('nav.top-nav');
     const target = nav?.querySelector('.navbar-buttons');
-    if (!target) { restore(); if (open) setOpen(false); return; }
+    const refract = document.body.classList.contains('stash-liquid-glass');
+    const dock = target && usesRefractDock() ? document.querySelector('.refract-mobile-dock') : null;
+    const burger = dock?.querySelector(':scope > .refract-dock-burger');
+    mountRefractTrigger(burger);
+    if (!target) {
+      host?.remove();
+      syncHidden(managed, new Set(), 'nh-managed');
+      syncHidden(utilities, new Set(), 'nh-mobile-utility');
+      syncHidden(refractMirrors, new Set(), 'nh-refract-mirror');
+      if (open) setOpen(false);
+      return;
+    }
     if (!host?.isConnected || host.parentElement !== target) {
       host?.remove(); host = el('div'); host.id = 'nh-host';
       pins = el('div', 'nh-pins');
-      trigger = button('▦ Plugins', 'nh-trigger', () => setOpen(!open));
-      trigger.setAttribute('aria-haspopup', 'dialog'); trigger.setAttribute('aria-controls', 'nh-panel'); trigger.setAttribute('aria-expanded', String(open));
+      trigger = menuTrigger('▦ Plugins', 'nh-trigger', () => setOpen(!open));
       host.append(pins, trigger); target.prepend(host); force = true;
     }
+    if (open && !activeTrigger()) setOpen(false);
     // Stash already exposes these utilities in its collapsed main menu.
     // Hide a mobile duplicate only after finding its counterpart there.
-    utilities.forEach(node => { if (!node.isConnected) utilities.delete(node); });
-    const collapse = nav.querySelector('.navbar-collapse');
-    for (const node of target.children) {
-      if (!node.classList.contains('nav-utility')) continue;
+    const duplicateUtilities = new Set();
+    const collapse = refract ? null : nav.querySelector('.navbar-collapse');
+    const counterparts = collapse?.querySelectorAll('.nav-utility') || [];
+    for (const node of target.querySelectorAll(':scope > .nav-utility')) {
       const href = node.getAttribute('href');
       const title = node.getAttribute('title');
-      const duplicate = collapse && [...collapse.querySelectorAll('.nav-utility')].some(other =>
+      const duplicate = [...counterparts].some(other =>
         (href && other.getAttribute('href') === href) || (title && other.tagName === node.tagName && other.getAttribute('title') === title));
-      if (node.classList.contains('nh-mobile-utility') !== Boolean(duplicate)) node.classList.toggle('nh-mobile-utility', Boolean(duplicate));
-      if (duplicate) utilities.add(node); else utilities.delete(node);
+      if (duplicate) duplicateUtilities.add(node);
+      else if (node.classList.contains('nh-mobile-utility')) node.classList.remove('nh-mobile-utility');
     }
+    syncHidden(utilities, duplicateUtilities, 'nh-mobile-utility');
     const definitions = new Map(builtins.map(def => [def.id, def]));
     registry.forEach((def, id) => definitions.set(id, def));
     const next = [];
@@ -197,14 +282,20 @@
     next.sort((a, b) => (pref(a.id).order ?? 1000) - (pref(b.id).order ?? 1000));
     // Do not remove/re-add classes each scan: that would trigger an observer loop.
     const shouldHide = new Set();
+    const sources = new Set();
     next.forEach(entry => {
       if (!entry.source || pref(entry.id).managed === false) return;
       // Hide the SFW wrapper as well, to avoid its margin leaving an empty gap.
       const node = entry.source.id === 'plugin_sfw' && entry.source.parentElement?.matches('a') ? entry.source.parentElement : entry.source;
-      shouldHide.add(node);
+      if (activeTrigger()) {
+        shouldHide.add(node);
+        sources.add(entry.source);
+      } else if (node.classList.contains('nh-managed')) {
+        node.classList.remove('nh-managed');
+      }
     });
-    managed.forEach(node => { if (!shouldHide.has(node)) { node.classList.remove('nh-managed'); managed.delete(node); } });
-    shouldHide.forEach(node => { if (!node.classList.contains('nh-managed')) hide(node); else managed.add(node); });
+    syncHidden(managed, shouldHide, 'nh-managed');
+    syncHidden(refractMirrors, findRefractMirrors(nav, burger && dock, sources), 'nh-refract-mirror');
     const nextSignature = JSON.stringify(next.map(e => [e.id,e.label,e.icon,state(e),e.source?.innerHTML,e.source?.title,pref(e.id)]));
     const replaced = next.some((entry, index) => entry.source !== entries[index]?.source || entry.onClick !== entries[index]?.onClick);
     entries = next;
@@ -221,11 +312,12 @@
       return () => { if (registry.get(def.id) === def) { registry.delete(def.id); schedule(); } };
     },
     refresh: schedule,
-    open() { if (panel && trigger?.isConnected) setOpen(true); },
+    open() { if (panel && activeTrigger()) setOpen(true); },
     close() { if (panel) setOpen(false, true); }
   });
   function start() {
     buildPanel(); sync();
+    refractMobile.addEventListener('change', schedule);
     const observer = new MutationObserver(records => {
       if (records.some(record => {
         const node = record.target;

@@ -20,6 +20,10 @@ If you use a Stash plugin source that lists Nav Hub, you can also install it und
 - Press Escape, use the close button, or click outside the panel to close it. Tab stays within the open panel.
 - On smaller screens, duplicate Stash utility buttons such as Stats are hidden when Nav Hub finds a matching entry in the collapsed main navigation.
 
+## Refract Theme
+
+Nav Hub now supports [Refract Theme](https://github.com/ordureconnoisseur/stash-refract).
+
 ## Built-in integrations
 
 | Plugin | Button selector |

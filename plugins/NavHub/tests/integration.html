@@ -1,21 +1,150 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Nav Hub – integration test</title>
-<link rel="stylesheet" href="../ui/navhub.css">
+<link id="navhub-css" rel="stylesheet" href="../ui/navhub.css">
 <style>body{margin:0;background:#141b21;color:#eee;font:16px system-ui}.top-nav{display:flex;align-items:center;justify-content:space-between;background:#202b34;height:54px;padding:0 12px}.navbar-buttons{display:flex;align-items:center}.navbar-collapse{display:none}.navbar-buttons>button,.navbar-buttons>a{color:white;background:none;border:0;padding:12px}.navbar-brand{font-weight:bold}#result{white-space:pre-wrap;margin:20px}button{font:inherit}</style>
+<script>
+const refractOrder = new URLSearchParams(location.search).get('refract');
+if (refractOrder) {
+  const theme = document.createElement('style');
+  theme.textContent = `
+    body.stash-liquid-glass nav.top-nav .navbar-buttons > * { display:inline-flex !important; }
+    body.stash-liquid-glass nav.top-nav .navbar-buttons { font-size:0 !important; }
+    body.stash-liquid-glass nav.top-nav span { display:none !important; }
+    .refract-mobile-dock, .refract-mobile-drawer { display:none; }
+    @media (max-width:900px) {
+      body.stash-liquid-glass nav.top-nav.navbar { display:none !important; }
+      body.stash-liquid-glass .refract-mobile-dock { display:flex !important; position:fixed; inset:auto 0 0; padding:0 8px; }
+      body.stash-liquid-glass .refract-mobile-dock .refract-dock-item { display:inline-flex; flex:1 1 0; min-width:3.1rem; height:3.1rem; }
+      body.stash-liquid-glass .refract-mobile-drawer { display:grid; }
+      body.stash-liquid-glass .refract-mobile-drawer .refract-drawer-tile { display:flex; }
+    }`;
+  const navhubCSS = document.querySelector('#navhub-css');
+  if (refractOrder === 'before') navhubCSS.before(theme);
+  else navhubCSS.after(theme);
+}
+</script>
 </head><body>
-<nav class="top-nav"><div class="navbar-brand">Stash</div><div class="navbar-collapse"><a class="nav-utility" href="/stats">Stats</a></div><div class="navbar-buttons">
+<nav class="top-nav navbar"><div class="navbar-brand">Stash</div><div class="navbar-collapse"><a class="nav-utility" href="/stats">Stats</a></div><div class="navbar-buttons">
 <a class="pmvg-nav-btn" href="#pmv">PMV</a><button class="redtok-nav-btn">RedTok</button><a class="mr-2"><button id="plugin_sfw" aria-pressed="false">SFW</button></a><button class="ms-nav-btn">Storm</button><button id="stash-downloader-nav-button">Downloader</button><a class="nav-utility" href="/stats">Stats</a><button class="nav-menu-toggle">☰</button><button class="nav-utility ostickers-toggle-button" aria-pressed="true">💦</button>
 </div></nav><pre id="result">Running tests…</pre>
-<script>window.calls=0;document.querySelector('.ms-nav-btn').addEventListener('click',()=>window.calls++);</script>
+<script>
+localStorage.removeItem('stash.navhub.v1');
+window.calls=0;
+document.querySelector('.ms-nav-btn').addEventListener('click',()=>window.calls++);
+if (refractOrder) document.body.classList.add('stash-liquid-glass');
+</script>
 <script src="../ui/navhub.js"></script>
 <script>
 (async () => {
   const output = document.querySelector('#result'), results = [];
   const wait = () => new Promise(resolve => setTimeout(resolve, 100));
   function assert(condition, label) { if (!condition) throw Error(label); results.push('PASS: '+label); }
-  try {
-    localStorage.removeItem('stash.navhub.v1');
+  async function checkRefract() {
+    const mobile = matchMedia('(max-width:900px)').matches;
+    const display = node => getComputedStyle(node).display;
+    const visible = node => !!node?.getClientRects().length;
+    const sfw = document.querySelector('#plugin_sfw');
+    const original = sfw.parentElement;
+    const pmv = document.querySelector('.pmvg-nav-btn');
+    pmv.href = '/plugin-pmv';
+    let toggles = 0;
+    sfw.addEventListener('click', () => { toggles++; });
+    const desktop = document.querySelector('#nh-host .nh-trigger');
+    if (mobile) {
+      assert(display(original) !== 'none', 'Manage waits for the mobile dock');
+      assert(!visible(desktop), 'Refract hides the standard navbar on mobile');
+      NavHub.open();
+      assert(document.querySelector('#nh-panel').hidden, 'The API waits for an available opener');
+    }
+    const drawer = document.createElement('nav');
+    drawer.className = 'refract-mobile-drawer';
+    drawer.innerHTML = `<button class="refract-drawer-tile" data-action-selector="#plugin_sfw">SFW</button>
+      <a class="refract-drawer-tile" data-plugin-tile="1" data-href="/plugin-pmv">PMV</a>
+      <a class="refract-drawer-tile" data-href="/stats">Stats</a>`;
+    const dock = document.createElement('nav');
+    dock.className = 'refract-mobile-dock';
+    dock.innerHTML = `<button class="refract-dock-item" data-action-selector="#plugin_sfw">SFW</button>
+      <a class="refract-dock-item" data-href="/plugin-pmv">PMV</a>
+      <a class="refract-dock-item" data-href="/stats">Stats</a>
+      <a class="refract-dock-item" data-href="/scenes">Scenes</a>
+      <a class="refract-dock-item" data-href="/tags">Tags</a>
+      <a class="refract-dock-item" data-href="/studios">Studios</a>
+      <button class="refract-dock-item refract-dock-burger">All pages</button>`;
+    function connectDock(node) {
+      node.querySelector('.refract-dock-burger').onclick = () => document.body.classList.toggle('refract-burger-open');
+    }
+    connectDock(dock);
+    document.body.append(drawer, dock);
     await wait();
+    assert(display(original) === 'none' && display(pmv) === 'none', 'Managed originals stay hidden with Refract CSS ' + refractOrder);
+    assert(!document.querySelector('.navbar-buttons a.nav-utility').classList.contains('nh-mobile-utility'), 'Refract owns the visibility of Stash utilities');
+    const opener = mobile ? dock.querySelector('.nh-refract-trigger') : desktop;
+    assert(visible(opener) && [...document.querySelectorAll('.nh-trigger')].filter(visible).length === 1, 'One visible Plugins opener');
+    if (mobile) {
+      assert(opener.nextElementSibling.matches('.refract-dock-burger'), 'Plugins is next to All pages');
+      assert(display(drawer.querySelector('[data-action-selector]')) === 'none' && display(dock.querySelector('[data-action-selector]')) === 'none', 'SFW mirrors hidden');
+      assert(display(drawer.querySelector('[data-plugin-tile]')) === 'none' && display(dock.querySelector('[data-href="/plugin-pmv"]')) === 'none', 'Unique route mirrors hidden');
+      assert(display(dock.querySelector('[data-href="/stats"]')) !== 'none', 'Stash routes remain available');
+      const duplicate = pmv.cloneNode();
+      duplicate.classList.remove('pmvg-nav-btn', 'nh-managed');
+      pmv.after(duplicate);
+      await wait();
+      assert(display(drawer.querySelector('[data-plugin-tile]')) !== 'none' && display(dock.querySelector('[data-href="/plugin-pmv"]')) !== 'none', 'Ambiguous route mirrors remain available');
+      duplicate.remove();
+      await wait();
+      dock.querySelector('.refract-dock-burger').click();
+    }
+    opener.click();
+    assert(!document.body.classList.contains('refract-burger-open'), 'Opening Plugins closes the Refract drawer');
+    document.querySelector('#nh-panel [data-nh-id="sfw"]').click();
+    assert(toggles === 1 && document.activeElement === opener, 'The original action runs once and focus returns to Plugins');
+    NavHub.open();
+    document.querySelector('[aria-label="Toggle plugin settings"]').click();
+    document.querySelector('[data-nh-focus="sfw:managed"]').click();
+    await wait();
+    assert(display(original) !== 'none', 'Turning off Manage restores the original CSS display');
+    if (mobile) {
+      assert(display(drawer.querySelector('[data-action-selector]')) !== 'none' && display(dock.querySelector('[data-action-selector]')) !== 'none', 'Turning off Manage restores both SFW mirrors');
+      assert(opener.getBoundingClientRect().width >= 44 && opener.getBoundingClientRect().height >= 44, 'Plugins has a 44px touch target');
+      if (innerWidth === 320) assert(dock.scrollWidth > dock.clientWidth && getComputedStyle(dock).overflowX === 'auto', 'A full narrow dock can scroll');
+    } else {
+      assert(parseFloat(getComputedStyle(opener).fontSize) > 0, 'Plugins text is visible');
+      document.querySelector('[data-nh-focus="storm:pinned"]').click();
+      await wait();
+      if (innerWidth >= 1200) {
+        const pin = document.querySelector('#nh-host .nh-pin');
+        assert(visible(pin.querySelector('.nh-icon')) && visible(pin.querySelector('.nh-label')), 'Pinned icon and label are visible');
+      }
+    }
+    document.querySelector('[data-nh-focus="sfw:managed"]').click();
+    await wait();
+    assert(display(original) === 'none', 'Turning Manage back on hides the original');
+    NavHub.close();
+    if (mobile) {
+      const replacement = dock.cloneNode(true);
+      replacement.querySelector('.nh-refract-trigger').remove();
+      replacement.querySelectorAll('.nh-refract-mirror').forEach(node => node.classList.remove('nh-refract-mirror'));
+      connectDock(replacement);
+      dock.replaceWith(replacement);
+      await wait();
+      assert(replacement.querySelector('.nh-refract-trigger') === opener && document.querySelectorAll('.nh-refract-trigger').length === 1, 'Plugins recovers after dock replacement');
+      assert(display(replacement.querySelector('[data-action-selector]')) === 'none', 'Replacement dock mirrors stay hidden');
+      replacement.remove();
+      await wait();
+      assert(display(original) !== 'none' && display(drawer.querySelector('[data-action-selector]')) !== 'none', 'Removing the dock restores managed controls');
+    }
+    document.body.classList.remove('stash-liquid-glass');
+    await wait();
+    assert(visible(desktop) && !document.querySelector('.nh-refract-trigger') && display(original) === 'none', 'Switching to the default look restores the standard opener');
+  }
+  try {
+    await wait();
+    if (refractOrder) {
+      await checkRefract();
+      output.textContent = results.join('\n')+'\nALL PASSED';
+      output.dataset.status='passed';
+      return;
+    }
     assert(!!window.NavHub, 'Public API');
     assert(document.querySelectorAll('#nh-host').length === 1, 'Single menu host');
     assert(document.querySelector('.ms-nav-btn').classList.contains('nh-managed'), 'Original button hidden in place');

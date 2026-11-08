@@ -34,3 +34,28 @@
 }
 @media (max-width:1199.98px) { .top-nav .navbar-buttons > .nh-mobile-utility { display:none !important; } }
 #nh-panel, #nh-panel *, #nh-host, #nh-host * { box-sizing:border-box; }
+
+/* Important declarations in a layer take precedence over Refract's unlayered navbar rules. */
+@layer navhub-refract {
+  body.stash-liquid-glass .top-nav .nh-managed,
+  body.stash-liquid-glass .nh-refract-mirror { display:none !important; }
+  body.stash-liquid-glass #nh-host .nh-icon { display:inline-flex !important; }
+  body.stash-liquid-glass #nh-host .nh-label { display:inline !important; }
+}
+body.stash-liquid-glass #nh-host { font-size:1rem; }
+
+@media (max-width:900px) {
+  body.stash-liquid-glass .refract-mobile-dock:has(> .nh-refract-trigger) {
+    justify-content:flex-start;
+    overflow-x:auto;
+  }
+  body.stash-liquid-glass .refract-mobile-dock:has(> .nh-refract-trigger) > .refract-dock-item {
+    min-width:44px;
+    min-height:44px;
+  }
+  body.stash-liquid-glass .refract-mobile-dock > .nh-refract-trigger { font-size:1.25rem; }
+  body.stash-liquid-glass .refract-mobile-dock > .nh-refract-trigger:focus-visible {
+    outline:2px solid currentColor;
+    outline-offset:-3px;
+  }
+}
