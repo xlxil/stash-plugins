@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Nav Hub – integration test</title>
+<link rel="stylesheet" href="../ui/navhub.css">
+<style>body{margin:0;background:#141b21;color:#eee;font:16px system-ui}.top-nav{display:flex;align-items:center;justify-content:space-between;background:#202b34;height:54px;padding:0 12px}.navbar-buttons{display:flex;align-items:center}.navbar-collapse{display:none}.navbar-buttons>button,.navbar-buttons>a{color:white;background:none;border:0;padding:12px}.navbar-brand{font-weight:bold}#result{white-space:pre-wrap;margin:20px}button{font:inherit}</style>
+</head><body>
+<nav class="top-nav"><div class="navbar-brand">Stash</div><div class="navbar-collapse"><a class="nav-utility" href="/stats">Stats</a></div><div class="navbar-buttons">
+<a class="pmvg-nav-btn" href="#pmv">PMV</a><button class="redtok-nav-btn">RedTok</button><a class="mr-2"><button id="plugin_sfw" aria-pressed="false">SFW</button></a><button class="ms-nav-btn">Storm</button><button id="stash-downloader-nav-button">Downloader</button><a class="nav-utility" href="/stats">Stats</a><button class="nav-menu-toggle">☰</button><button class="nav-utility ostickers-toggle-button" aria-pressed="true">💦</button>
+</div></nav><pre id="result">Running tests…</pre>
+<script>window.calls=0;document.querySelector('.ms-nav-btn').addEventListener('click',()=>window.calls++);</script>
+<script src="../ui/navhub.js"></script>
+<script>
+(async () => {
+  const output = document.querySelector('#result'), results = [];
+  const wait = () => new Promise(resolve => setTimeout(resolve, 100));
+  function assert(condition, label) { if (!condition) throw Error(label); results.push('PASS: '+label); }
+  try {
+    localStorage.removeItem('stash.navhub.v1');
+    await wait();
+    assert(!!window.NavHub, 'Public API');
+    assert(document.querySelectorAll('#nh-host').length === 1, 'Single menu host');
+    assert(document.querySelector('.ms-nav-btn').classList.contains('nh-managed'), 'Original button hidden in place');
+    assert(document.querySelector('.nav-menu-toggle').parentElement.classList.contains('navbar-buttons'), 'Main navigation preserved');
+    assert(document.querySelector('.navbar-buttons > a.nav-utility').classList.contains('nh-mobile-utility'), 'Duplicate utility marked for hiding on mobile');
+    NavHub.open(); await wait();
+    assert(document.querySelectorAll('#nh-panel .nh-item').length === 6, 'Six supported plugins detected');
+    document.querySelector('#nh-panel [data-nh-id="storm"]').click();
+    assert(window.calls === 1 && document.querySelector('#nh-panel').hidden, 'Original handler runs once and the panel closes');
+    NavHub.open();
+    document.querySelector('#plugin_sfw').setAttribute('aria-pressed','true'); await wait();
+    assert(document.querySelector('#nh-panel [data-nh-id="sfw"]').getAttribute('aria-pressed') === 'true', 'Toggle state stays in sync');
+    document.querySelector('#stash-downloader-nav-button').disabled = true; await wait();
+    assert(document.querySelector('#nh-panel [data-nh-id="downloader"]').disabled, 'Disabled state stays in sync');
+    const old = document.querySelector('.ms-nav-btn'), replacement = old.cloneNode(true);
+    replacement.classList.remove('nh-managed'); replacement.addEventListener('click',()=>window.calls+=10); old.replaceWith(replacement); await wait();
+    document.querySelector('#nh-panel [data-nh-id="storm"]').click();
+    assert(window.calls === 11, 'Replacement button uses its own handler');
+    const unregister = NavHub.register({id:'custom',label:'Custom action',icon:'★',onClick:()=>window.calls+=100}); await wait(); NavHub.open();
+    document.querySelector('#nh-panel [data-nh-id="custom"]').click(); assert(window.calls === 111, 'Registered custom action');
+    unregister(); await wait(); NavHub.open(); assert(!document.querySelector('#nh-panel [data-nh-id="custom"]'), 'Unregistration');
+    document.querySelector('[aria-label="Toggle plugin settings"]').click();
+    const managed = document.querySelector('[data-nh-focus="storm:managed"]'); managed.click(); await wait();
+    assert(!replacement.classList.contains('nh-managed'), 'Turning off Manage restores the original button');
+    document.querySelector('[data-nh-focus="storm:managed"]').click(); await wait();
+    document.querySelector('[data-nh-focus="storm:pinned"]').click(); await wait();
+    assert(!!document.querySelector('#nh-host [data-nh-id="storm"]'), 'Pinning');
+    document.querySelector('[data-nh-focus="storm:-1"]').click(); await wait();
+    assert(JSON.parse(localStorage.getItem('stash.navhub.v1')).storm.order === 2, 'Order saved');
+    document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
+    assert(document.querySelector('#nh-panel').hidden && document.activeElement.classList.contains('nh-trigger'), 'Escape restores focus');
+    const target = document.querySelector('.navbar-buttons'), newTarget = target.cloneNode(true); newTarget.querySelector('#nh-host').remove();
+    target.replaceWith(newTarget); await wait();
+    assert(document.querySelectorAll('#nh-host').length === 1, 'Recovery after navigation replacement');
+    NavHub.open();
+    if (location.search.includes('preview')) { output.textContent = results.join('\n'); return; }
+    assert(document.querySelector('#nh-panel').getBoundingClientRect().width <= innerWidth, 'Panel fits within the viewport');
+    document.querySelector('#nh-backdrop').click(); assert(document.querySelector('#nh-panel').hidden, 'Clicking the backdrop closes the panel');
+    output.textContent = results.join('\n')+'\nALL PASSED';
+    output.dataset.status='passed';
+  } catch(error) { output.textContent=results.join('\n')+'\nFAIL: '+error.stack; output.dataset.status='failed'; }
+})();
+</script></body></html>

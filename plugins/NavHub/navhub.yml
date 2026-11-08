@@ -1,0 +1,8 @@
+name: Nav Hub
+description: Unified plugin menu with a mobile bottom sheet and desktop shortcuts.
+version: 0.1.0
+ui:
+  javascript:
+    - ui/navhub.js
+  css:
+    - ui/navhub.css
